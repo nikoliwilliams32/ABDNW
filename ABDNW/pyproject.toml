@@ -6,8 +6,11 @@ authors = [
     {name = "Your Name",email = "you@example.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
+    "pyomo (>=6.9.4,<7.0.0)",
+    "pandas (>=2.3.2,<3.0.0)",
+    "highspy (>=1.11.0,<2.0.0)"
 ]
 
 [tool.poetry]
