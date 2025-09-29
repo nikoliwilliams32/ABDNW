@@ -95,10 +95,10 @@ class BatteryDispatchModel:
 
         This method sets up the optimization model including:
             - Sets for time periods
-            - Parameters for load and renewable generation profiles
+            - Parameters for prices of energy markets
             - Variables for battery charge, discharge, and state of charge
-            - Constraints for battery operation and load balance
-            - Objective function for cost minimization
+            - Constraints for battery operation and market rules
+            - Objective function for profit maximization
 
         Note:
             This is an internal method called by __init__.
@@ -424,10 +424,6 @@ class BatteryDispatchModel:
 
         Returns:
             pyomo.opt.results.SolverResults: Results from the optimization solver.
-
-        Note:
-            Common solvers include 'highs', 'glpk', 'cplex', 'gurobi', etc.
-            The solver must be installed and accessible in the system.
         """
         opt = SolverFactory(solver)
 
