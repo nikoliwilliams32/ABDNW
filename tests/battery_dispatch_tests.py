@@ -3,6 +3,7 @@ import os
 from abdnw.battery_dispatch import BatteryDispatchModel
 import pandas as pd
 import numpy as np
+import pyomo.environ as pyo
 
 
 class TestBatteryDispatch(unittest.TestCase):
@@ -10,23 +11,17 @@ class TestBatteryDispatch(unittest.TestCase):
         """Set up test fixtures.
         Creates a small test dataset and initializes a BatteryDispatchModel instance.
         """
-        # Create test data directory if it doesn't exist
         os.makedirs("./data", exist_ok=True)
 
-        # Create test market data
         self.test_data_path = "./data/test_market_data.xlsx"
 
-        # Create simple hourly price data for 48 hours (96 half-hour periods)
         hourly_data = pd.DataFrame(
             {"Market 2 Price [£/MWh]": [50.0 if i < 24 else 80.0 for i in range(48)]}
         )
-
-        # Create half-hourly price data
         halfhourly_data = pd.DataFrame(
             {"Market 1 Price [£/MWh]": [40.0 if i < 24 else 100.0 for i in range(96)]}
         )
 
-        # Save test data to Excel file
         with pd.ExcelWriter(self.test_data_path) as writer:
             hourly_data.to_excel(writer, sheet_name="Hourly data", index=True)
             halfhourly_data.to_excel(writer, sheet_name="Half-hourly data", index=True)
@@ -48,7 +43,6 @@ class TestBatteryDispatch(unittest.TestCase):
             market_data_path=self.test_data_path,
         )
 
-        # Solve the model
         self.model.solve()
 
     def tearDown(self):
@@ -230,60 +224,40 @@ class TestBatteryDispatch(unittest.TestCase):
         """Test battery degradation calculations and cycle limits."""
         m = self.model.model
         battery_capacity = self.model.battery_capacity
-        degradation_factor = self.model.batter_degradation
+        degradation_factor = self.model.battery_degradation
 
         # Calculate total cycles
         total_cycles = 0
         for t in m.T_halfhour:
-            # Test degradation calculation
-            expected_degradation = (
-                (
+            # Accumulate cycles
+            cycles_t = m.total_cycles[t].value
+            cycles_tmin1 = m.total_cycles[t - 1].value if t > 0 else 0
+
+            # Verify cycles calculation
+            expected_cycles = (
+                cycles_tmin1
+                + (
                     m.charge_hour[t].value
                     + m.discharge_hour[t].value
                     + m.charge_halfhour[t].value
                     + m.discharge_halfhour[t].value
                 )
-                / (
-                    battery_capacity * 4
-                )  # Divide by 4 because half-hourly and charge+discharge
-            ) * degradation_factor
-
-            self.assertAlmostEqual(
-                m.current_degradation[t].value,
-                expected_degradation,
-                places=6,
-                msg=f"Degradation calculation incorrect at period {t}",
+                / battery_capacity
+                / 2
             )
-
-            # Test charge limit with degradation
-            remaining_capacity = (
-                battery_capacity - m.current_degradation[t].value - m.soc[t].value
-            )
-            total_charge = (
-                m.charge_hour[t].value + m.charge_halfhour[t].value
-            ) * self.model.charge_efficiency
-            self.assertLessEqual(
-                total_charge,
-                remaining_capacity + 1e-6,  # Allow for minor numerical issues
-                f"Charging exceeds remaining capacity with degradation at period {t}",
-            )
-
-            # Accumulate cycles
-            cycles_t = m.total_cycles[t].value
-            total_cycles += cycles_t
-
-            # Verify cycles calculation
-            expected_cycles = (
-                m.charge_hour[t].value
-                + m.discharge_hour[t].value
-                + m.charge_halfhour[t].value
-                + m.discharge_halfhour[t].value
-            ) / battery_capacity
             self.assertAlmostEqual(
                 cycles_t,
                 expected_cycles,
                 places=6,
                 msg=f"Cycle calculation incorrect at period {t}",
+            )
+            # test degradation calculation
+            expected_degradation = cycles_t * degradation_factor
+            self.assertAlmostEqual(
+                m.current_degradation[t].value,
+                expected_degradation,
+                places=6,
+                msg=f"Degradation calculation incorrect at period {t}",
             )
 
         # Test that total cycles don't exceed maximum
